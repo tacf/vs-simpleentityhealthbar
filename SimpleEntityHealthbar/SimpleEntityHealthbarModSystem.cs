@@ -13,6 +13,7 @@ public class SimpleEntityHealthbarModSystem : ModSystem
     public static string ModId = "SimpleEntityHealthbar";
     private Entity _mobhealthBarEntity;
     private EntityAgentHealthBar _mobhealthBar;
+    private GuiDialog _gameDefaultTooltip;
 
     public override void Start(ICoreAPI api)
     {
@@ -24,6 +25,7 @@ public class SimpleEntityHealthbarModSystem : ModSystem
     {
         _capi = api;
         _capi.Event.RegisterGameTickListener(OnGameTick, 100, 0);
+        _gameDefaultTooltip = _capi.Gui.LoadedGuis.Find(x => x.DebugName == "HudElementBlockAndEntityInfo");
         
         base.StartClientSide(_capi);
     }
@@ -37,7 +39,6 @@ public class SimpleEntityHealthbarModSystem : ModSystem
                 if (_mobhealthBarEntity == targetEntity && _mobhealthBarEntity != null) return;
                 if (_mobhealthBar != null && _mobhealthBarEntity != targetEntity)
                 {
-                    _mobhealthBarEntity = null;
                     _mobhealthBar.TryClose();
                     _mobhealthBar.Dispose();
                     _mobhealthBar = null;
@@ -45,23 +46,21 @@ public class SimpleEntityHealthbarModSystem : ModSystem
                 
                 if (targetEntity.Alive && targetEntity.IsInteractable && targetEntity.GetBehavior<EntityBehaviorBoss>() == null)
                 {
-                    _mobhealthBarEntity = targetEntity;
-                    _mobhealthBar = new EntityAgentHealthBar(_capi, _mobhealthBarEntity as EntityAgent);
-                    var targetTooltip = _capi.Gui.LoadedGuis.Find(x => x.DebugName == "HudElementBlockAndEntityInfo");
-                    if (targetTooltip != null)
-                    {
-                        targetTooltip.TryClose();
-                    }
+                    _mobhealthBar = new EntityAgentHealthBar(_capi, targetEntity as EntityAgent);
+                    _gameDefaultTooltip?.TryClose();
+                    _gameDefaultTooltip?.ClearComposers();
                     _mobhealthBar.ComposeGuis();
                 }
             } else if (targetEntity == null)
             {
-                _mobhealthBarEntity = null;
                 if (_mobhealthBar != null)
                 {
                     _mobhealthBar.TryClose();
                     _mobhealthBar.Dispose();
+                    _gameDefaultTooltip?.TryOpen();
+                    _mobhealthBar = null;
                 }
             }
+            _mobhealthBarEntity = targetEntity;
     }
 }
