@@ -1,0 +1,14 @@
+{
+    "type": "code",
+    "modid": "simpleentityhealthbar",
+    "name": "Simple Entity Healthbar",
+    "authors": [
+        "tacf"
+    ],
+    "side": "client",
+    "description": "Client Side mod displays a healthbar for targeted entities on top of the screen",
+    "version": "0.0.1",
+    "dependencies": {
+        "game": "1.21.0"
+    }
+}

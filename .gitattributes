@@ -1,0 +1,6 @@
+* text=auto
+.git* text eol=lf
+*.json text eol=lf
+*.cs text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf
