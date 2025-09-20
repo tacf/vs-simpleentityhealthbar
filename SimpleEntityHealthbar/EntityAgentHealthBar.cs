@@ -1,9 +1,7 @@
-﻿using Vintagestory.API.Common.Entities;
-using Vintagestory.Client.NoObf;
+﻿using System.Drawing;
+using Vintagestory.API.MathTools;
 
 namespace SimpleEntityHealthbar;
-
-// Class Highly based on https://github.com/anegostudios/vssurvivalmod/blob/master/Gui/HudBosshealthBars.cs
 
 using System;
 using Vintagestory.API.Client;
@@ -14,35 +12,75 @@ using Vintagestory.GameContent;
 #nullable disable
 
 public class EntityAgentHealthBar : HudElement
-    {
-        float lastHealth;
-        float lastMaxHealth;
+{
         public EntityAgent TargetEntityAgent;
 
-        GuiElementStatbar healthbar;
-        GuiElementDynamicText title;
-        long listenerId;
+        private ICoreClientAPI _clientApi;
+        
+        public GuiElementStatbar healthbar;
+        private GuiElementDynamicText title;
+        private long drawTickListenerId;
+        private long clearTickListenerId;
+        
+        public override bool ShouldReceiveKeyboardEvents() => false;
+        public override bool ShouldReceiveMouseEvents() => false;
+        public override bool Focusable => false;
 
-        public override double InputOrder { get { return 1; } }
-
-        public EntityAgentHealthBar(ICoreClientAPI capi, EntityAgent entityAgent) : base(capi)
+        public EntityAgentHealthBar(ICoreClientAPI clientApi) : base(clientApi)
         {
-            this.TargetEntityAgent = entityAgent;
-            listenerId = capi.Event.RegisterGameTickListener(this.OnGameTick, 20);
+            drawTickListenerId = clientApi.Event.RegisterGameTickListener(Every15ms, 15);
+            _clientApi = clientApi;
             
+            ComposeGuis();
+            TryOpen();
+        }
+        public override string ToggleKeyCombinationCode => null;
 
+        public bool IsHealthBarActive()
+        {
+            return TargetEntityAgent != null || (TargetEntityAgent == null && clearTickListenerId != 0);
+        }
+
+        public override void OnGuiOpened()
+        {
             ComposeGuis();
         }
-        public override string ToggleKeyCombinationCode { get { return null; } }
 
-        private void OnGameTick(float dt)
+        private void Every15ms(float dt)
         {
+            EntityAgent oldTargetEntityAgent = TargetEntityAgent;
+            TargetEntityAgent = _clientApi.World.Player?.CurrentEntitySelection?.Entity as EntityAgent;
+            if (oldTargetEntityAgent == null && TargetEntityAgent == null) return;
+            
+            // Lost Target lets schedule removal
+            if (oldTargetEntityAgent != null && TargetEntityAgent == null)
+            {
+                if (clearTickListenerId > 0) return;
+                clearTickListenerId = _clientApi.Event.RegisterCallback((timePassed) =>
+                {
+                    TryClose();
+                    clearTickListenerId = 0;
+                }, 1000);
+                return;
+            }
+
+            // We want to draw a new target entity so we clear the current delayed close.
+            if (clearTickListenerId > 0)
+            {
+                _clientApi.Event.UnregisterCallback(clearTickListenerId);
+                clearTickListenerId = 0;
+                Composers.ClearComposers();
+                ComposeGuis();
+            }
+            
+            if (!IsOpened()) TryOpen();
             UpdateHealth();
+            
         }
-      
 
         void UpdateHealth()
         {
+
             ITreeAttribute healthTree = TargetEntityAgent.WatchedAttributes.GetTreeAttribute("health");
             if (healthTree == null) return;
 
@@ -50,25 +88,20 @@ public class EntityAgentHealthBar : HudElement
             float? maxHealth = healthTree.TryGetFloat("maxhealth");
 
             if (health == null || maxHealth == null) return;
-            if (lastHealth == health && lastMaxHealth == maxHealth) return;
             if (healthbar == null) return;
 
             healthbar.SetLineInterval(1);
             healthbar.SetValues((float)health, 0, (float)maxHealth);
 
-            lastHealth = (float)health;
-            lastMaxHealth = (float)maxHealth;
-
-            if (title != null)
-            {
-                title.Text = GetHealthTextValue(health, maxHealth);
-                title.RecomposeText();
-            }
+            if (title == null) return;
+            title.Text = GetHealthTextValue(health, maxHealth);
+            title.RecomposeText();
         }
 
         public void ComposeGuis()
         {
-            float width = 850;
+            if (TargetEntityAgent == null) return;
+            float width = _clientApi.Gui.WindowBounds.OuterWidthInt * 0.3f;
             ElementBounds dialogBounds = new ElementBounds()
             {
                 Alignment = EnumDialogArea.CenterFixed,
@@ -81,12 +114,24 @@ public class EntityAgentHealthBar : HudElement
             ElementBounds healthBarBounds = ElementBounds.Fixed(0, 35, width, 14);
             ElementBounds entityNameBounds = ElementBounds.Fixed(0, 0, width*0.8, 30);
             ElementBounds entityHealthBounds = ElementBounds.Fixed(width*0.8, 0, width*0.2, 30);
-            CairoFont entityHealthFont = CairoFont.WhiteMediumText();
-            entityHealthFont.Orientation = EnumTextOrientation.Right;
+            entityHealthBounds.fixedMarginX = 5.0;
+            entityNameBounds.fixedMarginX = 5.0;
+            dialogBounds.fixedMarginX = 5.0;
+
             
+            double[] darkGreen = ColorUtil.ToRGBADoubles(Color.ForestGreen.ToArgb());
+            double[] black = ColorUtil.ToRGBADoubles(Color.Black.ToArgb());
 
-            string description = GetHealthTextValue(0.0f, 0.0f);
+            string entityName = TargetEntityAgent.GetName();
+            string healthTextValue = GetHealthTextValue(0.0f, 0.0f);
 
+            double[] healthbarColor = GuiStyle.HealthBarColor;
+            if (TargetEntityAgent is EntityTrader) healthbarColor = darkGreen;
+
+            CairoFont entityHealthFont = CairoFont.WhiteMediumText().WithStroke(black, 2.0);
+            entityHealthFont.Orientation = EnumTextOrientation.Right;
+            CairoFont entityNameFont = CairoFont.WhiteMediumText().WithStroke(black, 2.0);
+            
             ITreeAttribute healthTree = TargetEntityAgent.WatchedAttributes.GetTreeAttribute("health");
             string key = "entityhealthbar-" + TargetEntityAgent.EntityId;
             Composers["entityhealthbar"] =
@@ -94,64 +139,30 @@ public class EntityAgentHealthBar : HudElement
                 .CreateCompo(key, dialogBounds.FlatCopy().FixedGrow(0, 20))
                 .BeginChildElements(dialogBounds)
                     .AddIf(healthTree != null)
-                        .AddDynamicText(TargetEntityAgent.GetName(), CairoFont.WhiteMediumText(), entityNameBounds)
-                        .AddDynamicText(description, entityHealthFont, entityHealthBounds, "healthbarvalue")
-                        .AddStatbar(healthBarBounds, GuiStyle.HealthBarColor, "healthstatbar")
+                        .AddDynamicText(entityName, entityNameFont, entityNameBounds)
+                        .AddDynamicText(healthTextValue, entityHealthFont, entityHealthBounds, "healthbarvalue")
+                        .AddStatbar(healthBarBounds, healthbarColor, "healthstatbar")
                         .AddRichtext(TargetEntityAgent.GetInfoText(), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, 60, width, 20))
                     .EndIf()
-                .EndChildElements()
-                .Compose()
-            ;
+                .EndChildElements().Compose();
 
             title = Composers["entityhealthbar"].GetElement("healthbarvalue") as GuiElementDynamicText;
             healthbar = Composers["entityhealthbar"].GetStatbar("healthstatbar");
-            TryOpen();
         }
 
         private string GetHealthTextValue(float? health, float? maxHealth)
         {
             var healthRnd =  health != null ? MathF.Round((float)health, 1) : 0.0f;
             var maxHealthRnd =  maxHealth != null ? MathF.Round((float)maxHealth, 1) : 0.0f;
-            return string.Format("({0}/{1})", healthRnd , maxHealthRnd);
+            return string.Format("{0} / {1}", healthRnd , maxHealthRnd);
         }
 
-        // Can't be closed
-        public override bool TryClose()
-        {
-            return base.TryClose();
-        }
-
-        public override bool ShouldReceiveKeyboardEvents()
-        {
-            return false;
-        }
-        
-
-        public override void OnRenderGUI(float deltaTime)
-        {   
-            base.OnRenderGUI(deltaTime);
-        }
-        
-        
-        // Can't be focused
-        public override bool Focusable => false;
-
-        // Can't be focused
-        protected override void OnFocusChanged(bool on)
-        {
-
-        }
-
-        public override void OnMouseDown(MouseEvent args)
-        {
-            // Can't be clicked
-        }
 
         public override void Dispose()
         {
+            if (IsOpened()) TryClose();
             base.Dispose();
-
-            capi.Event.UnregisterGameTickListener(listenerId);
+            _clientApi.Event.UnregisterGameTickListener(drawTickListenerId);
         }
 
     }

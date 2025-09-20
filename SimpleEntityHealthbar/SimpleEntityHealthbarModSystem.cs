@@ -1,105 +1,79 @@
-﻿
+﻿using HarmonyLib;
+using SimpleEntityHealthbar.patches;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.Client.NoObf;
-using Vintagestory.GameContent;
 
 namespace SimpleEntityHealthbar;
 
 public class SimpleEntityHealthbarModSystem : ModSystem
 {
     private ICoreClientAPI _capi;
+    public static ModInfo ModInfo;
+    
+    private BlockInfoHudPatch  _blockInfoHudPatch = new ();
+    
     public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Client;
     public static string ModId = "SimpleEntityHealthbar";
+    
+    
     private Entity _mobhealthBarEntity;
-    private EntityAgentHealthBar _mobhealthBar;
+    private static EntityAgentHealthBar _mobhealthBar;
     private bool _needUpdateBlockInfoHudVisibility = ClientSettings.ShowBlockInfoHud; 
 
     public override void Start(ICoreAPI api)
     {
-        api.World.Logger.Event("started '" + ModId + "'");   
+        ModInfo = Mod.Info;
+        Logger.Init(api.Logger);
+        Logger.Event($"started '{ModInfo.Name}' (Version: {ModInfo.Version})"); 
     }
     
 
     public override void StartClientSide(ICoreClientAPI api)
     {
         _capi = api;
-        _capi.Event.RegisterGameTickListener(OnGameTick, 100, 0);
-        _capi.Settings.AddWatcher<bool>("showBlockInfoHud", OnShowBlockInfoHud);
+        
+        _mobhealthBar = new EntityAgentHealthBar(_capi);
+        _blockInfoHudPatch.Patch();
         
         base.StartClientSide(_capi);
     }
 
-    private void OnShowBlockInfoHud(bool newValue)
+    public static bool IsHealthBarActive()
     {
-        // We prevent from showing the hud if enabled during HB display
-        // we flag to presentation after bar disappears
-        if (newValue && _mobhealthBar != null)
+        return _mobhealthBar.IsHealthBarActive();
+    }
+    
+    public static Harmony NewPatch(string description, string category)
+    {
+        Harmony patcher = null;
+        if (!Harmony.HasAnyPatches(category))
         {
-            ClientSettings.ShowBlockInfoHud = false;
-            _needUpdateBlockInfoHudVisibility = true;
+            patcher = new Harmony(category);
+            patcher.PatchCategory(category);
+            Logger.Log($"Patched {description}");
         }
+        else Logger.Error($"Patch '{category}' ('{description}') failed. Check if other patches with same id have been loaded");
+
+        return patcher;
     }
-
-
-    // Handle hiding BlockInfoHud during Healthbar presentation
-    private void HandleBlockInfoHudVisibility(bool hide = false)
+    
+    public override void Dispose()
     {
-        var showingBlockInfoHud = ClientSettings.ShowBlockInfoHud;
-        
-        // We're going to display a healtbar and the hud is present (we want to hide it)
-        if (showingBlockInfoHud && hide)
-        {
-            ClientSettings.ShowBlockInfoHud = false;
-            _needUpdateBlockInfoHudVisibility = true;
-        } 
-        else if (!showingBlockInfoHud && !hide && _needUpdateBlockInfoHudVisibility)
-        {
-            // We want to enable Block info hud, and we previously have changed it
-            ClientSettings.ShowBlockInfoHud = true;
-            _needUpdateBlockInfoHudVisibility = false;
-        }
+        base.Dispose();
+        _blockInfoHudPatch.Unpatch();
     }
+}
 
-    private void OnGameTick(float obj)
-    {
-            var targetEntity = _capi.World.Player.CurrentEntitySelection?.Entity;
-            switch (targetEntity)
-            {
-                case EntityAgent when _mobhealthBarEntity == targetEntity && _mobhealthBarEntity != null:
-                    return;
-                case EntityAgent agent:
-                {
-                    if (_mobhealthBar != null && _mobhealthBarEntity != targetEntity)
-                    {
-                        _mobhealthBar.TryClose();
-                        _mobhealthBar.Dispose();
-                        _mobhealthBar = null;
-                    } 
-                
-                    if (agent.Alive && agent.IsInteractable && agent.GetBehavior<EntityBehaviorBoss>() == null)
-                    {
-                        _mobhealthBar = new EntityAgentHealthBar(_capi, agent);
-                        HandleBlockInfoHudVisibility(hide: true);
-                        _mobhealthBar.ComposeGuis();
-                    }
 
-                    break;
-                }
-                case null:
-                {
-                    if (_mobhealthBar != null)
-                    {
-                        _mobhealthBar.TryClose();
-                        _mobhealthBar.Dispose();
-                        _mobhealthBar = null;
-                        HandleBlockInfoHudVisibility(hide: false); // has to be last
-                    }
+public class Logger
+{
+    private static ILogger _logger;
+    private string _logBaseFormat = string.Format("[{0}] {1}", SimpleEntityHealthbarModSystem.ModInfo.Name);
 
-                    break;
-                }
-            }
-            _mobhealthBarEntity = targetEntity;
-    }
+    public static void Init(ILogger logger) => _logger = logger;
+    public static void Event(string message) => _logger.Log(EnumLogType.Event, message);
+    public static void Log(string message) => _logger.Log(EnumLogType.Build, message);
+    public static void Error(string message) => _logger.Log(EnumLogType.Error, message);
 }
