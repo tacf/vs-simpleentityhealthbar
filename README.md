@@ -1,9 +1,9 @@
 # vs-simpleentityhealthbar
-Vintage Story Mod that highlights items dropped on the ground
+Vintage Story Mod that displays both on Hud and in world over targeted entities a healthbar
 
 # Manual Configuration via JSON
 
-The Item Pickup Highlighter mod stores its configuration in a JSON file, named `SimpleEntityHealthbar.json` in VintageStory mods config directory.
+The Simple Entity Healthbar mod stores its configuration in a JSON file, named `SimpleEntityHealthbar.json` in VintageStory mods config directory.
 
 ## Editing the Config File
 
@@ -11,27 +11,31 @@ You can manually edit this file with any text editor (such as Notepad, VS Code, 
 
 ```json
 {
-  "HighlightDistance": 10,
-  "HighlightContinousMode": false,
-  "HighlightColor": 4294967295
+  "ShowHudHealthBar": true,
+  "ShowNameplates": true,
+  "MaxTargetDistance": 15 // currently caps at 50 
 }
 ```
 
 ### Config Options
 
-- **HighlightDistance**: (integer, minimum 2)
-  - The maximum distance (in blocks) from the player at which items will be highlighted.
-  - Example: `10`
+- **ShowHudHealthBar**: (bool)
+  - Enable/Disable the Hud healthbar (shown on top center screen)
+  - Example: `true`
+  - Default `true`
 
-- **HighlightContinousMode**: (boolean)
-  - If `true`, items are highlighted continuously without pressing the hotkey.
-  - If `false`, you must use the hotkey to highlight items.
-  - Example: `true` or `false`
+- **ShowNameplates**: (boolean)
+  - Enable/Disable the Entity nameplates containing name and healthbar
+  - Example: `true`
+  - Default: `false`
 
-- **HighlightColor**: (integer, ARGB format)
-  - The color of the highlight, stored as a 32-bit integer in ARGB format (Alpha, Red, Green, Blue).
-  - Example: `4294967295` (which is white, fully opaque: `0xFFFFFFFF`)
-  - To use a custom color, convert your desired color to ARGB integer format. You can use online tools or C#'s `Color.ToArgb()` method.
+- **MaxTargetDistance**: (integer)
+  - Max distance at which nameplates are displayed (Hud Healthbar only shows at standard  pick distance 4.5 blocks max)
+  - Example: `20`
+  - Default: `15`
+  - Note: This is capped by the code to 50, since the experience is poor 
+  and i would like to avoid any unforseen crashes. Even with proper scaling at 50
+  blocks distance the nameplate seems to provide little value
 
 ### Tips
 - Always save the file after editing.
