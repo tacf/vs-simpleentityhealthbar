@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using System.Runtime.CompilerServices;
 using Vintagestory.API.MathTools;
 
 namespace SimpleEntityHealthbar;
@@ -25,14 +26,12 @@ public class EntityAgentHealthBar : HudElement
         public override bool ShouldReceiveKeyboardEvents() => false;
         public override bool ShouldReceiveMouseEvents() => false;
         public override bool Focusable => false;
+        public override bool ShouldReceiveRenderEvents() => IsHealthBarActive();
 
         public EntityAgentHealthBar(ICoreClientAPI clientApi) : base(clientApi)
         {
             drawTickListenerId = clientApi.Event.RegisterGameTickListener(Every15ms, 15);
             _clientApi = clientApi;
-            
-            ComposeGuis();
-            TryOpen();
         }
         public override string ToggleKeyCombinationCode => null;
 
@@ -81,7 +80,7 @@ public class EntityAgentHealthBar : HudElement
         void UpdateHealth()
         {
 
-            ITreeAttribute healthTree = TargetEntityAgent.WatchedAttributes.GetTreeAttribute("health");
+            ITreeAttribute healthTree = TargetEntityAgent?.WatchedAttributes.GetTreeAttribute("health");
             if (healthTree == null) return;
 
             float? health = healthTree.TryGetFloat("currenthealth");
@@ -149,6 +148,7 @@ public class EntityAgentHealthBar : HudElement
             title = Composers["entityhealthbar"].GetElement("healthbarvalue") as GuiElementDynamicText;
             healthbar = Composers["entityhealthbar"].GetStatbar("healthstatbar");
         }
+        
 
         private string GetHealthTextValue(float? health, float? maxHealth)
         {

@@ -1,17 +1,18 @@
 ﻿using HarmonyLib;
 using SimpleEntityHealthbar.patches;
+using Simpleentityhealthbarnameplate;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
-using Vintagestory.Client.NoObf;
 
 namespace SimpleEntityHealthbar;
 
 public class SimpleEntityHealthbarModSystem : ModSystem
 {
-    private ICoreClientAPI _capi;
+    public static ICoreClientAPI _capi;
     public static ModInfo ModInfo;
-    
+
+    private static string _configFile;
     private BlockInfoHudPatch  _blockInfoHudPatch = new ();
     
     public override bool ShouldLoad(EnumAppSide forSide) => forSide == EnumAppSide.Client;
@@ -20,11 +21,12 @@ public class SimpleEntityHealthbarModSystem : ModSystem
     
     private Entity _mobhealthBarEntity;
     private static EntityAgentHealthBar _mobhealthBar;
-    private bool _needUpdateBlockInfoHudVisibility = ClientSettings.ShowBlockInfoHud; 
+    private static EntityAgentNameplateHealthBar _mobnameplatehealthBar;
 
     public override void Start(ICoreAPI api)
     {
         ModInfo = Mod.Info;
+        _configFile = $"{Mod.Info.Name}.json".Replace(" ", "");
         Logger.Init(api.Logger);
         Logger.Event($"started '{ModInfo.Name}' (Version: {ModInfo.Version})"); 
     }
@@ -34,15 +36,27 @@ public class SimpleEntityHealthbarModSystem : ModSystem
     {
         _capi = api;
         
-        _mobhealthBar = new EntityAgentHealthBar(_capi);
+        ModConfig.Instance = api.LoadModConfig<ModConfig>(_configFile);
+        if (ModConfig.Instance == null)
+        {
+            ModConfig.Instance = new ModConfig();
+        }
+        
+        api.StoreModConfig(ModConfig.Instance, _configFile);
+
+        if (ModConfig.Instance.ShowHudHealthBar)
+            _mobhealthBar = new EntityAgentHealthBar(_capi);
+        
+        if (ModConfig.Instance.ShowNameplates)
+            _mobnameplatehealthBar = new EntityAgentNameplateHealthBar(_capi);
         _blockInfoHudPatch.Patch();
         
         base.StartClientSide(_capi);
     }
-
+    
     public static bool IsHealthBarActive()
     {
-        return _mobhealthBar.IsHealthBarActive();
+        return _mobhealthBar != null && (_mobhealthBar?.IsHealthBarActive() == true);
     }
     
     public static Harmony NewPatch(string description, string category)
@@ -76,4 +90,5 @@ public class Logger
     public static void Event(string message) => _logger.Log(EnumLogType.Event, message);
     public static void Log(string message) => _logger.Log(EnumLogType.Build, message);
     public static void Error(string message) => _logger.Log(EnumLogType.Error, message);
+    public static void Debug(string message) => _logger.Log(EnumLogType.Debug, message);
 }
